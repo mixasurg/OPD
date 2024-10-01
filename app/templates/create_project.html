@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Добавить товар</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+  <h1>Добавить проект</h1>
+  <form action="/create_project" method="post" enctype="multipart/form-data">
+    <label for="title">Название</label>
+    <input type="text" name="title" id="title">
+
+    <label for="description">Описание</label>
+    <input type="text" name="description" id="description">
+
+    <label for="problem">Проблема</label>
+    <input type="text" name="problem" id="problem">
+
+    <label for="solution">Решение</label>
+    <input type="text" name="solution" id="solution">
+    
+    <label for="max_participants">Максимально количество студентов</label>
+    <input type="number" name="max_participants" id="max_participants">
+    
+    <label for="project_type">Тип проекта</label>
+    <select name="project_type" id="project_type">
+      {% for type in types %}
+      <option value="{{ type.name }}">{{ type.value }}</option>
+      {% endfor %}  
+    </select>
+    
+    <label for="target_groups">Целевые группы</label>
+    <select name="target_groups" id="target_groups" multiple>
+      {% for group in groups %}
+      <option value="{{ group.id }}">{{group.name}} - {{group.type.value}}{{group.year_of_entry}}</option>
+      {% endfor %}  
+    </select>
+
+    <label for="mentors">Менторы</label>
+    <select name="mentors" id="mentors" multiple>
+      {% for mentor in mentors %}
+      <option value="{{ mentor.id }}">{{mentor.full_name}}</option>
+      {% endfor %}  
+    </select>
+    
+    <label for="poster">Выберите постер:</label><br>
+    <div id="poster">
+      <input type="file" name="poster" required><br><br>
+    </div>
+
+    <input type="submit" value="Добавить проект">
+  </form>
+</body>
+</html>

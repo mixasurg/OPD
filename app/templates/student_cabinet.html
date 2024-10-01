@@ -1,0 +1,15 @@
+<h1>Профиль студента: {{ student.full_name }}</h1>
+<p>Группа: {{ student.group.name }}</p>
+{% if student.consent_to_share_competency %}
+  <p>Профиль компетенций: {{ student.competency_profile }}</p>
+{% endif %}
+<h2>Проекты, на которые поданы заявки:</h2>
+<ul>
+    {% for project in projects %}
+    <li>
+        <a href="{{ url_for('main.project_detail', project_id=project.id) }}">{{ project.title }}</a> - Статус: {{ project.status.value }}
+    </li>
+    {% else %}
+    <p>Студент не подал заявки ни на один проект.</p>
+    {% endfor %}
+  </ul>

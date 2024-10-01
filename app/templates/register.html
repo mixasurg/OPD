@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Регистрация</title>
+</head>
+<body>
+    <h1>Регистрация</h1>
+    <form method="POST" action="/register">
+        <label for="email">Почта:</label>
+        <input type="text" id="email" name="email" required><br><br>
+
+        <label for="password">Пароль:</label>
+        <input type="password" id="password" name="password" required><br><br>
+
+        <label for="full_name">ФИО:</label>
+        <input type="text" id="full_name" name="full_name" required><br><br>
+        
+        <label for="group">Группа</label>
+        <select name="group" id="group">
+          {% for group in groups %}
+          <option value="{{ group.id }}">{{group.name}} - {{group.type.value}}{{group.year_of_entry}}</option>
+          {% endfor %}  
+        </select>
+
+        <input type="submit" value="Зарегистрироваться">
+    </form>
+</body>
+</html>

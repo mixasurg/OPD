@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Интернет-мастерская</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <a class="navbar-brand" href="/">Интернет-мастерская</a>
+        <ul class="navbar-nav ml-auto">
+            {% if current_user.is_authenticated %}
+            {% if current_user.status.name == 'admin'%}
+            <li class="nav-item">
+                <a class="nav-link" href="/create_project">Пользователи</a>
+            </li>
+            {% endif %}
+            {% if current_user.status.name != 'student'%}
+            <li class="nav-item">
+                <a class="nav-link" href="/create_project">Создать</a>
+            </li>
+            {% endif %}
+            <li class="nav-item">
+                <a class="nav-link" href="/dashboard">Кабинет</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/logout">Выйти</a>
+            </li>
+            {% else %}
+            <li class="nav-item">
+                <a class="nav-link" href="/register">Регистрация</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/login">Войти</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    <div class="container">
+        <h2>Проекты:</h2>
+        <ul>
+            {% for project in projects %}
+            <li>{{ project.title }} ({{ project.status.value }}) 
+                <form method="get" action="{{ url_for('main.project_detail', project_id=project.id) }}">
+                    <a>Описание: {{project.description}}</a>
+                        <a>Тип проекта: {{project.project_type.value}}</a>
+                        <a>Целевые группы: 
+                            {% for group in project.target_groups %}
+                                {{ group.name }} - {{ group.type.value }} {{ group.year_of_entry }}
+                                {% if not loop.last %}, {% endif %}
+                            {% endfor %}
+                        </a><br>
+                        <img src="{{project.poster}}" alt="Product Photo" width="30%">
+                        <button type="submit"
+                        class="btn btn-primary">Открыть</button></form>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+</body>
+
+</html>

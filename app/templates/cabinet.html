@@ -1,0 +1,18 @@
+<h1>Личный кабинет: {{ user.full_name }}</h1>
+<p>Email: {{ user.email }}</p>
+<p>Группа: {{user.group.name}} - {{user.group.type.value}}{{user.group.year_of_entry}}</p>
+{% if user.consent_to_share_competency %}
+  <p>Профиль компетенций: {{ user.competency_profile }}</p>
+{% endif %}
+<h2>Проекты:</h2>
+<ul>
+  {% for project in user.projects %}
+    <li>{{ project.title }} - {{ project.status }}</li>
+  {% endfor %}
+</ul>
+<h2>Заявки:</h2>
+<ul>
+  {% for app in user.applications %}
+    <li>Проект: {{ app.project.title }} - Статус: {{ app.status }}</li>
+  {% endfor %}
+</ul>

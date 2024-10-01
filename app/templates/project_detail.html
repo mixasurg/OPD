@@ -1,0 +1,46 @@
+<h1>{{ project.title }}</h1>
+<p>Описание: {{ project.description }}</p>
+<p>Тип проекта: {{ project.project_type.value }}</p>
+<p>Статус: {{ project.status.value }}</p>
+<p>Целевые группы:
+    {% for group in project.target_groups %}
+        {{ group.name }} - {{ group.type.value }} {{ group.year_of_entry }}
+        {% if not loop.last %}, {% endif %}
+    {% endfor %}
+</p>
+
+<img src="{{ project.poster }}" alt="Poster" width="30%">
+<p>Проблема: {{ project.problem }}</p>
+<p>Предлагаемое решение: {{ project.solution }}</p>
+
+{% if current_user.status.name == 'student' %}
+    {% if application %}
+        <p>Вы уже подали заявку на этот проект.</p>
+        <form method="post" action="{{ url_for('main.delete_application', application_id=application.id) }}">
+            <button type="submit" class="btn btn-danger">Удалить заявку</button>
+        </form>
+    {% else %}
+    <form method="post">
+        <label for="priority">Приоритет</label>
+        <input type="number" name="priority" id="priority" min="1" max="5">
+        <button type="submit" class="btn btn-success">Оставить заявку</button>
+    </form>
+    {% endif %}
+{% else %}
+<h2>Заявки на проект</h2>
+<ul>
+    {% for application in project.confirmed_applications %}
+    <li>
+        <a href="{{ url_for('main.student_profile', student_id=application.user_id) }}">{{ application.user.full_name }}</a> 
+        - Статус: {{ application.status.value }}
+        {% if application.status.name == 'accepted' or  application.status.name == 'rejected' %}
+        {% elif current_user.id == project.manager_id or current_user in project.mentors %}
+        <form method="post" action="{{ url_for('main.process_application', application_id=application.id) }}">
+            <button type="submit" name="action" value="approve" class="btn btn-success">Подтвердить</button>
+            <button type="submit" name="action" value="reject" class="btn btn-danger">Отклонить</button>
+        </form>
+        {% endif %}
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}

@@ -1,38 +1,3 @@
 body{
     background-color: aliceblue;
 }
-
-.photo {
-    display: inline-block; /* Строчно-блочный элемент */
-    position: relative; /* Относительное позиционирование */
-}
-
-.photo img{
-    width: 280px;
-}
-
-.photo img:hover{
-    width: 320px;
-}
-
-.photo:hover::after {
-    content: attr(data-title); /* Выводим текст */
-    position: absolute; /* Абсолютное позиционирование */
-    left: 0; right: 0; bottom: 5px; /* Положение подсказки */
-    z-index: 1; /* Отображаем подсказку поверх других элементов */
-    background: rgba(182,22, 33 ,0.6); /* Полупрозрачный цвет фона */
-    color: #fff; /* Цвет текста */
-    text-align: center; /* Выравнивание текста по центру */
-    font-family: Arial, sans-serif; /* Гарнитура шрифта */
-    font-size: 14px; /* Размер текста подсказки */
-    padding: 5px 10px; /* Поля */
-    border: 1px solid #333; /* Параметры рамки */
-}
-
-.miniature {
-    display: block;
-}
-
-.miniature td {
-    display: inline-block;
-  }

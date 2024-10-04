@@ -1,12 +1,15 @@
+import vk_api
+import smtplib
+import time, random, string, os
 from datetime import datetime
 from flask import Blueprint, render_template, redirect, url_for, request
-from .models import db, User, Project, StudyGroup, Report, ProjectType, UserStatus, Application, ApplicationStatus, ProjectStatus
 from flask_login import login_user, logout_user, login_required, current_user
-from . import db, login_manager
-import time, random, string, os
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-import vk_api
+from .models import db, User, Project, StudyGroup, Report, ProjectType, UserStatus, Application, ApplicationStatus, ProjectStatus
+from . import db, login_manager
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 
 main = Blueprint('main', __name__)
@@ -289,7 +292,7 @@ def generate_unique_filename():
 
 #Сделать Уведомления
 def send_notification(email, vk_profile, message):
-    print('Сообщения для ',email)
+    send_email(email, "Уведомление с сайта ОПД", message)
     send_vk_message(vk_session, vk_profile, message)
 
 def send_vk_message(vk_session, user_id, message):
@@ -327,6 +330,30 @@ def notify_mentors_about_report(project, student):
 
     for mentor in project.mentors:
         send_notification(mentor.email, mentor.vk_profile, message)
+
+def send_email(email, subject, message):
+    try:
+        smtp_server = "smtp.gmail.com"
+        smtp_port = 587
+        smtp_user = ""  #  email с которого отсылать письмо
+        smtp_password = " "  # пароль приложения, а не обычный пароль от Gmail!!!!! https://seatable.io/ru/docs/integrationen-innerhalb-von-seatable/gmail-fuer-den-versand-von-e-mails-per-smtp-einrichten/
+
+        msg = MIMEMultipart()
+        msg['From'] = smtp_user
+        msg['To'] = email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(message, 'plain'))
+
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.send_message(msg)
+        server.quit()
+        print(f"Email sent to {email}")
+
+    except Exception as e:
+        print(f"Error sending email to {email}: {e}")
+
 
 project_status_user = {
     'teacher' : "open_recruitment",

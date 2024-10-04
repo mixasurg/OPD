@@ -59,16 +59,17 @@
     <ul>
         {% for report in reports %}
             <li>
-                <strong>{{ report.author.full_name }}</strong> — {{ report.date.strftime('%Y-%m-%d') }}<br>
+                <strong>{{ report.author_id.full_name }}</strong> — {{ report.date.strftime('%Y-%m-%d') }}<br>
                 <p>{{ report.description }}</p>
                 <a href="{{ url_for('static', filename='reports/' + report.file) }}" target="_blank">Скачать отчет</a>
             </li>
         {% endfor %}
     </ul>
-{% elif current_user.status.name == 'teacher' or current_user.status.name == 'admin' %}
+{% endif %}
+{% if current_user.status.name == 'teacher' or current_user.status.name == 'admin' %}
+{% if project.status.name == 'not_confirmed' %}
     <h2>Управление проектом</h2>
     <p>Текущий статус проекта: {{ project.status.value }}</p>
-    {% if project.status.name == 'not_confirmed' %}
         <form method="post" action="{{ url_for('main.project_detail', project_id=project.id) }}">
             <button type="submit" name="action" value="approve" class="btn btn-success">Подтвердить проект</button>
             <button type="submit" name="action" value="reject" class="btn btn-danger">Отклонить проект</button>

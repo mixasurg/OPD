@@ -6,13 +6,19 @@
 {% endif %}
 <h2>Проекты:</h2>
 <ul>
-  {% for project in user.projects %}
-    <li>{{ project.title }} - {{ project.status }}</li>
+  {% for project in projects %}
+  <li>
+    <a href="{{ url_for('main.project_detail', project_id=project.id) }}">{{ project.title }}</a> - Статус: {{ project.status.value }}
+</li>
   {% endfor %}
 </ul>
 <h2>Заявки:</h2>
 <ul>
-  {% for app in user.applications %}
-    <li>Проект: {{ app.project.title }} - Статус: {{ app.status }}</li>
-  {% endfor %}
+  {% for app in applications %}
+    {% for project in projects %}
+    {% if project.id == app.project_id%}
+    <li>Проект:<a href="{{ url_for('main.project_detail', project_id=project.id) }}">{{ project.title }}</a> - Статус: {{ app.status.value }}</li>
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
 </ul>

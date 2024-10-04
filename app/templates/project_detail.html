@@ -13,34 +13,65 @@
 <p>Проблема: {{ project.problem }}</p>
 <p>Предлагаемое решение: {{ project.solution }}</p>
 
-{% if current_user.status.name == 'student' %}
-    {% if application %}
+{% if current_user.status.name == 'student' and project.status.name == 'open_recruitment'%}
+    {% if application and application.status.name == 'accepted' %}
+        <form action="" method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="description">Описание отчета</label>
+                <textarea name="description" class="form-control" required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="report_file">Файл отчета</label>
+                <input type="file" name="report_file" class="form-control-file" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Загрузить отчет</button>
+        </form>
+    {% elif application %}
         <p>Вы уже подали заявку на этот проект.</p>
         <form method="post" action="{{ url_for('main.delete_application', application_id=application.id) }}">
             <button type="submit" class="btn btn-danger">Удалить заявку</button>
         </form>
     {% else %}
-    <form method="post">
-        <label for="priority">Приоритет</label>
-        <input type="number" name="priority" id="priority" min="1" max="5">
-        <button type="submit" class="btn btn-success">Оставить заявку</button>
-    </form>
-    {% endif %}
-{% else %}
-<h2>Заявки на проект</h2>
-<ul>
-    {% for application in project.confirmed_applications %}
-    <li>
-        <a href="{{ url_for('main.student_profile', student_id=application.user_id) }}">{{ application.user.full_name }}</a> 
-        - Статус: {{ application.status.value }}
-        {% if application.status.name == 'accepted' or  application.status.name == 'rejected' %}
-        {% elif current_user.id == project.manager_id or current_user in project.mentors %}
-        <form method="post" action="{{ url_for('main.process_application', application_id=application.id) }}">
-            <button type="submit" name="action" value="approve" class="btn btn-success">Подтвердить</button>
-            <button type="submit" name="action" value="reject" class="btn btn-danger">Отклонить</button>
+        <form method="post">
+            <label for="priority">Приоритет</label>
+            <input type="number" name="priority" id="priority" min="1" max="5">
+            <button type="submit" class="btn btn-success">Оставить заявку</button>
         </form>
-        {% endif %}
-    </li>
-    {% endfor %}
-</ul>
+    {% endif %}
+    
+{% elif current_user.id == project.manager_id or current_user in project.mentors %}
+    <h2>Заявки на проект</h2>
+    <ul>
+        {% for application in project.confirmed_applications %}
+            <li>
+                <a href="{{ url_for('main.student_profile', student_id=application.user_id) }}">{{ application.user.full_name }}</a> 
+                - Статус: {{ application.status.value }}
+                {% if application.status.name != 'accepted' and application.status.name != 'rejected' %}
+                    <form method="post" action="{{ url_for('main.process_application', application_id=application.id) }}">
+                        <button type="submit" name="action" value="approve" class="btn btn-success">Подтвердить</button>
+                        <button type="submit" name="action" value="reject" class="btn btn-danger">Отклонить</button>
+                    </form>
+                {% endif %}
+            </li>
+        {% endfor %}
+    </ul>
+    <h3>Отчеты студентов</h3>
+    <ul>
+        {% for report in reports %}
+            <li>
+                <strong>{{ report.author.full_name }}</strong> — {{ report.date.strftime('%Y-%m-%d') }}<br>
+                <p>{{ report.description }}</p>
+                <a href="{{ url_for('static', filename='reports/' + report.file) }}" target="_blank">Скачать отчет</a>
+            </li>
+        {% endfor %}
+    </ul>
+{% elif current_user.status.name == 'teacher' or current_user.status.name == 'admin' %}
+    <h2>Управление проектом</h2>
+    <p>Текущий статус проекта: {{ project.status.value }}</p>
+    {% if project.status.name == 'not_confirmed' %}
+        <form method="post" action="{{ url_for('main.project_detail', project_id=project.id) }}">
+            <button type="submit" name="action" value="approve" class="btn btn-success">Подтвердить проект</button>
+            <button type="submit" name="action" value="reject" class="btn btn-danger">Отклонить проект</button>
+        </form>
+    {% endif %}
 {% endif %}

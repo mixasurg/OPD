@@ -1,12 +1,17 @@
+from datetime import datetime
 from flask import Blueprint, render_template, redirect, url_for, request
-from .models import db, User, Project, StudyGroup, ProjectType, UserStatus, Application, ApplicationStatus
+from .models import db, User, Project, StudyGroup, Report, ProjectType, UserStatus, Application, ApplicationStatus, ProjectStatus
 from flask_login import login_user, logout_user, login_required, current_user
 from . import db, login_manager
 import time, random, string, os
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+import vk_api
 
 
 main = Blueprint('main', __name__)
+
+vk_session = vk_api.VkApi(token='') ##Ввести токен!!!!
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -22,7 +27,7 @@ def index():
 def register():
     if request.method == 'POST':
         email = request.form['email']
-        password = request.form['password'] # СДЕЛАТЬ ХЭШ
+        password = request.form['password'] 
         full_name = request.form['full_name']
         group_id = int(request.form.get('group'))
 
@@ -46,7 +51,7 @@ def register():
 def login():
     if request.method == 'POST':
         email = request.form['email']
-        password = request.form['password'] # СДЕЛАТЬ ХЭШ
+        password = request.form['password'] 
         user = User.query.filter_by(email=email).first()
         if user and check_password_hash(user.password, password):
             login_user(user)
@@ -65,7 +70,10 @@ def logout():
 @login_required
 def dashboard():
     user = current_user
-    return render_template('cabinet.html',  user=user)
+
+    applications = Application.query.filter_by(user_id=user.id).all()
+    projects = [Project.query.get(application.project_id) for application in applications]
+    return render_template('cabinet.html',  user=user, projects=projects, applications=applications)
 
 @main.route('/student/<int:student_id>')
 @login_required
@@ -145,31 +153,70 @@ def edit_project(project_id):
         project.mentors = User.query.filter(User.id.in_(mentor_ids)).all()
 
         db.session.commit()
+        notify_project_changes(project)
         return redirect(url_for('main.project_detail', project_id=project.id))
     
     return render_template('edit_project.html', project=project, groups =all_groups, mentors = all_mentors)
  
 @main.route('/project/<int:project_id>', methods=['GET', 'POST'])
+@login_required
 def project_detail(project_id):
     project = Project.query.get_or_404(project_id)
-    
+    application = Application.query.filter_by(user_id=current_user.id, project_id=project.id).first()
+    reports = Report.query.filter_by(project_id=project_id).all()
+
     if request.method == 'POST':
         if current_user.status == UserStatus.student:
-            application_count = Application.query.filter_by(user_id=current_user.id).count()
-            if application_count >= 5:
+            if application and application.status == ApplicationStatus.accepted:
+                if 'report_file' in request.files:
+                    report_file = request.files['report_file']
+                    if report_file:
+                        filename = save_report(report_file)
+                        description = request.form.get('description')
+                        report = Report(
+                            date=datetime.utcnow(),
+                            author_id=current_user.id,
+                            file=filename,
+                            description=description,
+                            project_id=project.id
+                        )
+                        db.session.add(report)
+                        db.session.commit()
+
+                        notify_mentors_about_report(project, current_user)
+
+                        return redirect(url_for('main.project_detail', project_id=project.id))
+            else:
+                application_count = Application.query.filter_by(user_id=current_user.id).count()
+                if application_count >= 5:
+                    return redirect(url_for('main.project_detail', project_id=project_id))
+
+                existing_application = Application.query.filter_by(user_id=current_user.id, project_id=project_id).first()
+                if existing_application:
+                    return redirect(url_for('main.project_detail', project_id=project_id))
+
+                priority = request.form['priority']
+                new_application = Application(user_id=current_user.id, project_id=project.id, priority=priority)
+                db.session.add(new_application)
+                db.session.commit()
+
                 return redirect(url_for('main.project_detail', project_id=project_id))
 
-            existing_application = Application.query.filter_by(user_id=current_user.id, project_id=project_id).first()
-            if existing_application:
-                return redirect(url_for('main.project_detail', project_id=project_id))
+        # Логика для преподавателей и администраторов
+        if current_user.status in [UserStatus.teacher, UserStatus.admin]:
+            action = request.form.get('action')
+            if action == 'approve':
+                project.status = ProjectStatus.open_recruitment  
+                notify_project_change(project, ProjectStatus.open_recruitment.value)
 
-            priority = request.form['priority']
-            new_application = Application(user_id=current_user.id, project_id=project.id, priority = priority)
-            db.session.add(new_application)
+            elif action == 'reject':
+                project.status = ProjectStatus.rejected
+                notify_project_change(project, ProjectStatus.rejected.value)
+
             db.session.commit()
-            return redirect(url_for('main.project_detail', project_id=project_id))
-    application = Application.query.filter_by(user_id=current_user.id, project_id=project.id).first()
-    return render_template('project_detail.html', project=project, application=application)
+            return redirect(url_for('main.project_detail', project_id=project.id))
+
+    return render_template('project_detail.html', project=project, application=application, reports=reports)
 
 @main.route('/delete_application/<int:application_id>', methods=['POST'])
 def delete_application(application_id):
@@ -193,14 +240,22 @@ def process_application(application_id):
         abort(403)
 
     action = request.form.get('action')
+    project_url = url_for('main.project_detail', project_id=project.id, _external=True)
+    
     if action == 'approve':
         application.status = ApplicationStatus.accepted
         db.session.commit()
-        send_notification(application.user.email, 'Заявка подтверждена', 'Ваша заявка на проект {} была подтверждена.'.format(project.title))
+        send_notification(application.user.email, application.user.vk_profile,
+                            f"Ваша заявка на проект {project.title} была подтверждена. Ссылка на проект: {project_url}")
+        accepted_applications_count = Application.query.filter_by(project_id=project.id, status=ApplicationStatus.accepted).count()
+        if accepted_applications_count >= project.max_participants:
+            project.status = ProjectStatus.closed_recruitment
+            db.session.commit()
     elif action == 'reject':
         application.status = ApplicationStatus.rejected
         db.session.commit()
-        send_notification(application.user.email, 'Заявка отклонена', 'Ваша заявка на проект {} была отклонена.'.format(project.title))
+        send_notification(application.user.email, application.user.vk_profile,  
+                          f"Ваша заявка на проект {project.title} была отклонена. Ссылка на проект: {project_url}")
 
     return redirect(url_for('main.project_detail', project_id=project.id))
 
@@ -217,6 +272,15 @@ def save_photo(photo):
     photo_url = '/static/photos/' + filename
     return photo_url
 
+def save_report(file):
+    filename = secure_filename(file.filename)
+    directory = os.path.join(os.path.dirname(__file__), 'static', 'reports')
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    file_path = os.path.join(directory, filename)
+    file.save(file_path)
+    return filename
+
 def generate_unique_filename():
     timestamp = str(int(time.time()))  
     random_string = ''.join(random.choices(string.ascii_letters + string.digits, k=8))  
@@ -224,8 +288,45 @@ def generate_unique_filename():
     return filename
 
 #Сделать Уведомления
-def send_notification(email):
+def send_notification(email, vk_profile, message):
     print('Сообщения для ',email)
+    send_vk_message(vk_session, vk_profile, message)
+
+def send_vk_message(vk_session, user_id, message):
+    try:
+        vk = vk_session.get_api()
+        vk.messages.send(user_id=user_id, message=message, random_id=0)
+    except Exception as e:
+        print(f"Error sending VK message to {user_id}: {e}")
+
+def notify_project_changes(project):
+
+    project_url = url_for('main.project_detail', project_id=project.id, _external=True)
+    message = f"Проект '{project.title}' был обновлен. Подробности: {project_url}"
+
+    participants = User.query.join(Application).filter(Application.project_id == project.id).all()
+
+    for user in participants:
+        send_notification(user.email, user.vk_profile, message)
+
+    for mentor in project.mentors:
+        send_notification(mentor.email, mentor.vk_profile, message)
+
+def notify_project_change(project, status):
+    project_url = url_for('main.project_detail', project_id=project.id, _external=True)
+    message = f"Статус проекта '{project.title}' был изменён на '{status}'. Ссылка на проект: {project_url}"
+
+    send_notification(project.manager.email, project.manager.vk_profile, message)
+
+    for mentor in project.mentors:
+        send_notification(mentor.email, mentor.vk_profile, message)
+
+def notify_mentors_about_report(project, student):
+    project_url = url_for('main.project_detail', project_id=project.id, _external=True)
+    message = f"Студент {student.full_name} добавил новый отчёт к проекту '{project.title}'. Ссылка на проект: {project_url}"
+
+    for mentor in project.mentors:
+        send_notification(mentor.email, mentor.vk_profile, message)
 
 project_status_user = {
     'teacher' : "open_recruitment",

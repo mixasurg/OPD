@@ -2,19 +2,20 @@ import vk_api
 import smtplib
 import time, random, string, os
 from datetime import datetime
-from flask import Blueprint, render_template, redirect, url_for, request
+from flask import Blueprint, request, jsonify, abort
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from flask_cors import CORS
 from .models import db, User, Project, StudyGroup, Report, ProjectType, UserStatus, Application, ApplicationStatus, ProjectStatus
 from . import db, login_manager
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-
 main = Blueprint('main', __name__)
+CORS(main)
 
-vk_session = vk_api.VkApi(token='') ##Ввести токен!!!!
+vk_session = vk_api.VkApi(token='')  # Введите токен
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -23,215 +24,157 @@ def load_user(user_id):
 @main.route('/')
 def index():
     projects = Project.query.all()
-    
-    return render_template('index.html', projects = projects)
+    projects_data = [{
+        "id": p.id,
+        "title": p.title,
+        "description": p.description,
+        "status": p.status
+    } for p in projects]
+    return jsonify(projects=projects_data), 200
 
-@main.route('/register', methods=['GET', 'POST'])
+@main.route('/register', methods=['POST'])
 def register():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password'] 
-        full_name = request.form['full_name']
-        group_id = int(request.form.get('group'))
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    full_name = data.get('full_name')
+    group_id = int(data.get('group'))
 
-        existing_user = User.query.filter_by(email=email).first()
-        if existing_user:
-            return 'Этот email уже используется. Пожалуйста, выберите другой.'
-        
-        hashed_password = generate_password_hash(password, method='sha256')
+    existing_user = User.query.filter_by(email=email).first()
+    if existing_user:
+        return {"error": "Этот email уже используется"}, 400
 
-        user = User(full_name=full_name, email=email, password=hashed_password, group_id = group_id)
+    hashed_password = generate_password_hash(password, method='sha256')
+    user = User(full_name=full_name, email=email, password=hashed_password, group_id=group_id)
 
-        db.session.add(user)
-        db.session.commit()
+    db.session.add(user)
+    db.session.commit()
 
-        return redirect(url_for('main.index'))
-    
-    StudyGroups = StudyGroup.query.all()
-    return render_template('register.html', groups=StudyGroups)
+    return {"message": "Пользователь зарегистрирован"}, 201
 
-@main.route('/login', methods=['GET', 'POST'])
+@main.route('/login', methods=['POST'])
 def login():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password'] 
-        user = User.query.filter_by(email=email).first()
-        if user and check_password_hash(user.password, password):
-            login_user(user)
-            return redirect(url_for('main.index'))
-        else:
-            return 'Неправильная почта или пароль'
-    return render_template('login.html')
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    user = User.query.filter_by(email=email).first()
 
-@main.route('/logout')
+    if user and check_password_hash(user.password, password):
+        login_user(user)
+        return {"message": "Успешный вход", "user_id": user.id}, 200
+    return {"error": "Неправильная почта или пароль"}, 401
+
+@main.route('/logout', methods=['POST'])
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for('main.index'))
+    return {"message": "Успешный выход"}, 200
 
-@main.route('/dashboard')
+@main.route('/dashboard', methods=['GET'])
 @login_required
 def dashboard():
     user = current_user
-
     applications = Application.query.filter_by(user_id=user.id).all()
     projects = [Project.query.get(application.project_id) for application in applications]
-    return render_template('cabinet.html',  user=user, projects=projects, applications=applications)
 
-@main.route('/student/<int:student_id>')
-@login_required
-def student_profile(student_id):
-    student = User.query.get_or_404(student_id)
-    if student.status != UserStatus.student:
-        abort(403)  
-    
-    applications = Application.query.filter_by(user_id=student.id).all()
-    projects = [Project.query.get(application.project_id) for application in applications]
-    
-    return render_template('student_cabinet.html', student=student, projects=projects)
+    applications_data = [{"id": a.id, "project_id": a.project_id, "status": a.status} for a in applications]
+    projects_data = [{
+        "id": p.id, 
+        "title": p.title, 
+        "description": p.description, 
+        "status": p.status
+    } for p in projects]
 
-@main.route('/create_project', methods=['GET', 'POST'])
+    user_data = {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role
+    }
+
+    return jsonify({
+        "user": user_data,
+        "projects": projects_data,
+        "applications": applications_data
+    }), 200
+
+@main.route('/api/projects', methods=['POST'])
 @login_required
 def create_project():
+    data = request.get_json()
+    title = data.get('title')
+    description = data.get('description')
+    project_type = data.get('project_type')
+    problem = data.get('problem')
+    max_participants = data.get('max_participants')
+    solution = data.get('solution')
+    target_groups = data.get('target_groups')
+    mentors = data.get('mentors')
+    status = project_status_user[current_user.status.name]
 
-    if request.method == 'POST':
-        title = request.form['title']
-        
-        description = request.form['description']
-        poster = request.files['poster']
-        photo_url = save_photo(poster)
-        
-        project_type = request.form['project_type']
-        problem = request.form['problem']
-        max_participants = request.form['max_participants']
-        solution = request.form['solution']
-        status = project_status_user[current_user.status.name]
-        target_groups = request.form.getlist('target_groups')
-        mentors = request.form.getlist('mentors')
-        project = Project(title=title, description=description, max_participants=max_participants, project_type = project_type, problem=problem, solution = solution, status=status, poster=photo_url)
-        
-        db.session.add(project)
-        db.session.commit()
-        for group_id in target_groups:
-            group = StudyGroup.query.get(group_id)
+    project = Project(
+        title=title,
+        description=description,
+        max_participants=max_participants,
+        project_type=project_type,
+        problem=problem,
+        solution=solution,
+        status=status
+    )
+
+    db.session.add(project)
+    db.session.commit()
+
+    for group_id in target_groups:
+        group = StudyGroup.query.get(group_id)
+        if group:
             project.target_groups.append(group)
-        
-        for mentor_id in mentors:
-            mentor = User.query.get(mentor_id)
+
+    for mentor_id in mentors:
+        mentor = User.query.get(mentor_id)
+        if mentor:
             project.mentors.append(mentor)
 
-        project.manager_id = current_user.id
-        db.session.commit()
-        return redirect(url_for('main.index'))
-    else:
-        mentors = User.query.filter_by(status=UserStatus.mentor)
-        StudyGroups = StudyGroup.query.all()
-        return render_template('create_project.html', groups=StudyGroups, types=ProjectType, mentors=mentors)
+    project.manager_id = current_user.id
+    db.session.commit()
 
-@main.route('/project/<int:project_id>/edit', methods=['GET', 'POST'])
-@login_required
-def edit_project(project_id):
-    project = Project.query.get_or_404(project_id)
-    
-    if current_user.id != project.manager_id:
-        abort(403)
-    
-    all_groups = StudyGroup.query.all()
-    all_mentors = User.query.filter(User.status.in_([UserStatus.teacher, UserStatus.mentor])).all()
+    return jsonify({'message': 'Проект создан', 'project_id': project.id}), 201
 
-    if request.method == 'POST':
-        project.title = request.form['title']
-        project.description = request.form['description']
-        project.problem = request.form['problem']
-        project.solution = request.form['solution']
-        poster = request.files['poster']
-        project.poster = save_photo(poster)
-        project.max_participants = request.form['max_participants']
-        project.target_groups.clear()
-
-        target_group_ids = request.form.getlist('target_groups')
-        project.target_groups = StudyGroup.query.filter(StudyGroup.id.in_(target_group_ids)).all()
-
-        mentor_ids = request.form.getlist('mentors')
-        project.mentors = User.query.filter(User.id.in_(mentor_ids)).all()
-
-        db.session.commit()
-        notify_project_changes(project)
-        return redirect(url_for('main.project_detail', project_id=project.id))
-    
-    return render_template('edit_project.html', project=project, groups =all_groups, mentors = all_mentors)
- 
-@main.route('/project/<int:project_id>', methods=['GET', 'POST'])
+@main.route('/project/<int:project_id>', methods=['GET'])
 @login_required
 def project_detail(project_id):
     project = Project.query.get_or_404(project_id)
     application = Application.query.filter_by(user_id=current_user.id, project_id=project.id).first()
     reports = Report.query.filter_by(project_id=project_id).all()
 
-    if request.method == 'POST':
-        if current_user.status == UserStatus.student:
-            if application and application.status == ApplicationStatus.accepted:
-                if 'report_file' in request.files:
-                    report_file = request.files['report_file']
-                    if report_file:
-                        filename = save_report(report_file)
-                        description = request.form.get('description')
-                        report = Report(
-                            date=datetime.utcnow(),
-                            author_id=current_user.id,
-                            file=filename,
-                            description=description,
-                            project_id=project.id
-                        )
-                        db.session.add(report)
-                        db.session.commit()
+    project_data = {
+        "id": project.id,
+        "title": project.title,
+        "description": project.description,
+        "status": project.status,
+        "reports": [{"id": r.id, "file": r.file, "date": r.date} for r in reports]
+    }
+    application_data = {
+        "id": application.id,
+        "status": application.status
+    } if application else None
 
-                        notify_mentors_about_report(project, current_user)
+    return jsonify({"project": project_data, "application": application_data}), 200
 
-                        return redirect(url_for('main.project_detail', project_id=project.id))
-            else:
-                application_count = Application.query.filter_by(user_id=current_user.id).count()
-                if application_count >= 5:
-                    return redirect(url_for('main.project_detail', project_id=project_id))
-
-                existing_application = Application.query.filter_by(user_id=current_user.id, project_id=project_id).first()
-                if existing_application:
-                    return redirect(url_for('main.project_detail', project_id=project_id))
-
-                priority = request.form['priority']
-                new_application = Application(user_id=current_user.id, project_id=project.id, priority=priority)
-                db.session.add(new_application)
-                db.session.commit()
-
-                return redirect(url_for('main.project_detail', project_id=project_id))
-
-        # Логика для преподавателей и администраторов
-        if current_user.status in [UserStatus.teacher, UserStatus.admin]:
-            action = request.form.get('action')
-            if action == 'approve':
-                project.status = ProjectStatus.open_recruitment  
-                notify_project_change(project, ProjectStatus.open_recruitment.value)
-
-            elif action == 'reject':
-                project.status = ProjectStatus.rejected
-                notify_project_change(project, ProjectStatus.rejected.value)
-
-            db.session.commit()
-            return redirect(url_for('main.project_detail', project_id=project.id))
-
-    return render_template('project_detail.html', project=project, application=application, reports=reports)
-
-@main.route('/delete_application/<int:application_id>', methods=['POST'])
+# Удаление заявки
+@main.route('/delete_application/<int:application_id>', methods=['DELETE'])
+@login_required
 def delete_application(application_id):
     application = Application.query.get_or_404(application_id)
 
     if application.user_id != current_user.id:
-        return redirect(url_for('main.project_detail', project_id=application.project_id))
+        abort(403)
 
     db.session.delete(application)
     db.session.commit()
-    return redirect(url_for('main.project_detail', project_id=application.project_id))
+    return {"message": "Заявка удалена"}, 200
 
+# Обработка заявки
 @main.route('/application/<int:application_id>/process', methods=['POST'])
 @login_required
 def process_application(application_id):
@@ -242,14 +185,15 @@ def process_application(application_id):
     if current_user.id != project.manager_id and current_user not in project.mentors:
         abort(403)
 
-    action = request.form.get('action')
-    project_url = url_for('main.project_detail', project_id=project.id, _external=True)
-    
+    data = request.get_json()
+    action = data.get('action')
+    project_url = f'/api/project/{project.id}'
+
     if action == 'approve':
         application.status = ApplicationStatus.accepted
         db.session.commit()
         send_notification(application.user.email, application.user.vk_profile,
-                            f"Ваша заявка на проект {project.title} была подтверждена. Ссылка на проект: {project_url}")
+                          f"Ваша заявка на проект {project.title} была подтверждена. Ссылка на проект: {project_url}")
         accepted_applications_count = Application.query.filter_by(project_id=project.id, status=ApplicationStatus.accepted).count()
         if accepted_applications_count >= project.max_participants:
             project.status = ProjectStatus.closed_recruitment
@@ -257,10 +201,10 @@ def process_application(application_id):
     elif action == 'reject':
         application.status = ApplicationStatus.rejected
         db.session.commit()
-        send_notification(application.user.email, application.user.vk_profile,  
+        send_notification(application.user.email, application.user.vk_profile,
                           f"Ваша заявка на проект {project.title} была отклонена. Ссылка на проект: {project_url}")
 
-    return redirect(url_for('main.project_detail', project_id=project.id))
+    return {"message": f"Заявка {action}"}, 200
 
 def save_photo(photo):
     directory = os.path.join(os.path.dirname(__file__), 'static', 'photos')
